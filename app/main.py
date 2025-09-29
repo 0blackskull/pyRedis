@@ -11,6 +11,15 @@ def main():
 
     connection, _ =  server_socket.accept() # wait for client
 
+    while True:
+        recv_data = connection.recv()
+
+        if not recv_data:
+            break
+        
+        connection.sendall(b"+PONG\r\n")
+
+
     connection.sendall(b"+PONG\r\n")
 
 
