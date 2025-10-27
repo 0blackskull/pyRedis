@@ -13,7 +13,7 @@ def accept_connection(sock):
     conn.setblocking(False)
     
     try:
-        data = types.SimpleNamespace(inb="", outb="", addr=addr)
+        data = types.SimpleNamespace(inb=b"", outb=b"", addr=addr)
         io_events = selectors.EVENT_READ | selectors.EVENT_WRITE
         sel.register(conn, io_events, data)
     except KeyError:
@@ -42,10 +42,11 @@ def service_connection(key: selectors.SelectorKey, mask: int):
             conn.close()
     
     if mask & selectors.EVENT_WRITE:
-        print("Responding with PONG")
-        conn.send("+PONG\r\n")
-
-
+        if data.outb:
+            print("Responding with PONG")
+            bytes_sent = conn.send(b"+PONG\r\n")
+            # data.outb = data.outb[bytes_sent:]
+            data.outb = b""
 
 def main():
     # bind and listen
