@@ -113,9 +113,11 @@ def execute_cmd(args: List[str]):
 
     # Supporting only echo for now
     if args[0] == "ECHO":
-        output = args[1] if len(args) > 1 else b"-ERR Too few args for ECHO"
+        output = b"+" + args[1].encode("utf-8") + b"\r\n" if len(args) > 1 else b"-ERR Too few args for ECHO\r\n"
+    elif args[0] == "PING":
+        output = b"+PONG\r\n"
     else:
-        output = b"-ERR unknown command"
+        output = b"-ERR unknown command\r\n"
 
     return output
             
@@ -177,7 +179,7 @@ def service_connection(key: selectors.SelectorKey, mask: int):
     if mask & selectors.EVENT_WRITE:
         if data.outb:
             print("Responding with PONG")
-            bytes_sent = conn.send(b"+PONG\r\n")
+            bytes_sent = conn.send(data.outb)
             data.outb = data.outb[bytes_sent:]
 
 def main():
@@ -202,5 +204,5 @@ def main():
                 service_connection(key, mask)
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
