@@ -1,6 +1,7 @@
 import socket  # noqa: F401
 import selectors
 import types
+from typing import List
 
 sel = selectors.DefaultSelector()
 
@@ -30,6 +31,7 @@ class RESParser:
         return line
 
     def parse(self, data):
+        results = []
         self.buf += data
 
         while True:
@@ -68,6 +70,7 @@ class RESParser:
 
                 if len(self.args) == self.expected_args:
                     print(self.args)
+                    results = self.args
                     self.args = []
                     self.expected_args = 0
 
@@ -99,8 +102,22 @@ class RESParser:
             # DEBUG statements
             # print(f"State {self.state} ; Pos {self.pos} ; Expected args {self.expected_args} ; Bulk len {self.bulk_len} ; Buffer {self.buf}")
             # print("args", self.args) # prints ["ECHO", "HELLO"]
+        
+        return results
 
+"""
+Executes commands received from clients after parsing
+"""
+def execute_cmd(args: List[str]):
+    output = b""
 
+    # Supporting only echo for now
+    if args[0] == "ECHO":
+        output = args[1] if len(args) > 1 else b"-ERR Too few args for ECHO"
+    else:
+        output = b"-ERR unknown command"
+
+    return output
             
 # parser = RESParser()
 
@@ -125,7 +142,8 @@ def accept_connection(sock):
     conn.setblocking(False)
     
     try:
-        data = types.SimpleNamespace(parser=RESParser, outb=b"", addr=addr)
+        # Single parser instance per connection 
+        data = types.SimpleNamespace(parser=RESParser(), outb=b"", addr=addr)
         io_events = selectors.EVENT_READ | selectors.EVENT_WRITE
         sel.register(conn, io_events, data)
     except KeyError:
@@ -146,7 +164,10 @@ def service_connection(key: selectors.SelectorKey, mask: int):
 
         # Storing data received from client
         if recv_data:
-            data.outb += recv_data
+            args = data.parser.parse(recv_data)
+            if args:
+                data.outb += execute_cmd(args)
+
         else:
             print(f"Closing connection from {data.addr}")
             # Cleanup
@@ -157,8 +178,7 @@ def service_connection(key: selectors.SelectorKey, mask: int):
         if data.outb:
             print("Responding with PONG")
             bytes_sent = conn.send(b"+PONG\r\n")
-            # data.outb = data.outb[bytes_sent:]
-            data.outb = b""
+            data.outb = data.outb[bytes_sent:]
 
 def main():
     # bind and listen
