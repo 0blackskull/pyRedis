@@ -19,10 +19,9 @@ class RESParser:
         self.args = []
         self.expected_args = 0
         self.bulk_len = 0
-        self.bulk_data = b""
 
     def _readline(self):
-        end_idx = self.buf.find(b"\r\n")
+        end_idx = self.buf.find(b"\r\n", self.pos)
         if end_idx < 0:
             return None
         
@@ -38,13 +37,8 @@ class RESParser:
             if self.pos >= len(self.buf):
                 break
 
-            token = self.buf[self.pos : self.pos + 1]
-
-            # if token == b"\n":
-            #     self.pos += 1
-            #     continue
-
             if self.state == "type":
+                token = self.buf[self.pos : self.pos + 1]
                 # Array start detected
                 if token == b"*":
                     # Expect array length next
@@ -58,62 +52,66 @@ class RESParser:
                 self.pos += 1
 
             elif self.state == "bulk_data":
+                expected_end = self.pos + self.bulk_len + 2 # 2 for CRLF
 
-                if len(self.bulk_data) == self.bulk_len:
-                    if token != b"\r" and token != b"\n":
-                        raise ValueError(f"Malformed payload: {self.bulk_data!r}")
-                    
-                    self.args.append(self.bulk_data.decode('utf-8'))
+                # Wait for buffer to reach correct size
+                if len(self.buf) < expected_end:
+                    break
 
-                    # Ready for next unit
-                    self.state = "type"
-                    self.bulk_len = 0
-                    self.bulk_data = b""
-                    
-                else:
-                    self.bulk_data += token
-                
-                self.pos += 1
+                # Read and store arg
+                arg = self.buf[self.pos : self.pos + self.bulk_len]
+                self.args.append(arg.decode('utf-8'))
+
+                self.state = "type"
+                self.pos = expected_end
+                self.bulk_len = 0
+
+                if len(self.args) == self.expected_args:
+                    print(self.args)
+                    self.args = []
+                    self.expected_args = 0
 
 
             elif self.state == "bulk_len":
-                # Bulk string length reading complete
-                if token == b"\r" or token == b"\n":
-                    self.state = "bulk_data"
-                # Update expected number of args
-                else:
-                    self.bulk_len = self.bulk_len * 10 + int(token.decode())
-
-                self.pos += 1
+                line = self._readline()
+                if line is None:
+                    break
+                
+                # Expected bulk string length ready
+                self.bulk_len = int(line.decode("utf-8"))
+                self.state = "bulk_data"
 
             
             elif self.state == "arr_len":
-                
-                # Array length (number of args) reading complete
-                if token == b"\r":
-                    self.state = "type"
-                # Update expected number of args
-                else:
-                    self.expected_args = self.expected_args * 10 + int(token.decode())
-                    print(int(token.decode()))
+                line = self._readline()
+                if line is None:
+                    break
 
-                self.pos += 1
+                # Expected array length ready
+                self.expected_args = int(line.decode("utf-8"))
+                self.state = "type"
 
-            print(f"Token {token} ; State {self.state} ; Pos {self.pos} ; Expected args {self.expected_args} ; Bulk len {self.bulk_len}")
-            print("args", self.args) # prints ["ECHO", "HELLO"]
+            # Interpreted / consumed all buffer
+            if self.pos == len(self.buf):
+                self.buf.clear()
+                self.pos = 0
+
+            # DEBUG statements
+            # print(f"State {self.state} ; Pos {self.pos} ; Expected args {self.expected_args} ; Bulk len {self.bulk_len} ; Buffer {self.buf}")
+            # print("args", self.args) # prints ["ECHO", "HELLO"]
 
 
             
-parser = RESParser()
+# parser = RESParser()
 
-chunks = [
-    b"*2\r\n$4\r\nE",     # arrives first
-    b"CHO\r\n$5\r\nhe",   # second
-    b"llo\r\n"             # last
-]
+# chunks = [
+#     b"*2\r\n$4\r\nE",     # arrives first
+#     b"CHO\r\n$5\r\nhe",   # second
+#     b"llo\r\n"             # last
+# ]
 
-for chunk in chunks:
-    parser.parse(chunk)
+# for chunk in chunks:
+#     parser.parse(chunk)
     
 
 
