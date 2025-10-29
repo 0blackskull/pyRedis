@@ -2,9 +2,29 @@ import socket  # noqa: F401
 import selectors
 import types
 from typing import List
-import db
 
 sel = selectors.DefaultSelector()
+
+"""
+In memory key-value database
+"""
+class DB:
+    _store = {}
+
+    def __init__(self):
+        # Static class
+        raise NotImplementedError("Static class")
+
+    # Class level methods (not instance/self level)
+    @classmethod
+    def set(cls, key: str, val: str):
+        cls._store[key] = val
+
+    @classmethod
+    def get(cls, key: str):
+        return cls._store.get(key, None)
+
+    
 
 """
 Decode incoming RESP payload (array of bulk strings)
@@ -123,12 +143,12 @@ def execute_cmd(args: List[str]):
         if len(args) < 3:
             output = b"-ERR Too few args for ECHO\r\n"
         else:
-            db.set(args[1], args[2])
+            DB.set(args[1], args[2])
             output = b"+OK\r\n"
 
     elif args[0] == "GET":
-        val = db.get(args[1])
-        output = b"$-1\r\n" if val is None else b"+OK\r\n"
+        val = DB.get(args[1])
+        output = b"$-1\r\n" if val is None else b"+" + val.encode("utf-8") + b"\r\n"
       
     else:
         output = b"-ERR unknown command\r\n"
