@@ -2,6 +2,7 @@ import socket  # noqa: F401
 import selectors
 import types
 from typing import List
+import db
 
 sel = selectors.DefaultSelector()
 
@@ -114,10 +115,25 @@ def execute_cmd(args: List[str]):
     # Supporting only echo for now
     if args[0] == "ECHO":
         output = b"+" + args[1].encode("utf-8") + b"\r\n" if len(args) > 1 else b"-ERR Too few args for ECHO\r\n"
+
     elif args[0] == "PING":
         output = b"+PONG\r\n"
+
+    elif args[0] == "SET":
+        if len(args) < 3:
+            output = b"-ERR Too few args for ECHO\r\n"
+        else:
+            db.set(args[1], args[2])
+            output = b"+OK\r\n"
+
+    elif args[0] == "GET":
+        val = db.get(args[1])
+        output = b"$-1\r\n" if val is None else b"+OK\r\n"
+      
     else:
         output = b"-ERR unknown command\r\n"
+    
+    # null type = $-1\r\n
 
     return output
             
@@ -131,9 +147,6 @@ def execute_cmd(args: List[str]):
 
 # for chunk in chunks:
 #     parser.parse(chunk)
-    
-
-
 
 """
 Accept connection on a listening socket ready for read
