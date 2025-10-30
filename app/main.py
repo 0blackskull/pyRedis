@@ -46,6 +46,9 @@ class DB:
 
     @classmethod
     def active_expire(cls, sample_size=100):
+        if not cls._expiries:
+            return
+
         random_idx = random.randrange(0, len(cls._expiries))
         now = time.time()
         to_delete = []
