@@ -2,6 +2,8 @@ import socket  # noqa: F401
 import selectors
 import types
 from typing import List
+import time
+import random
 
 sel = selectors.DefaultSelector()
 
@@ -10,20 +12,74 @@ In memory key-value database
 """
 class DB:
     _store = {}
+    # List of (key, now + ttl)
+    _expiries = []
+    # key -> index in _expiries
+    _expiry_index = {}
 
     def __init__(self):
         # Static class
-        raise NotImplementedError("Static class")
+        raise NotImplementedError("Attempted to instantiate static class")
 
     # Class level methods (not instance/self level)
     @classmethod
-    def set(cls, key: str, val: str):
+    def set(cls, key: str, val: str, ttl = None):
         cls._store[key] = val
+
+        if ttl: # ms
+            idx = len(cls._expiries)
+            cls._expiries.append((key, time.time() + ttl))
+            cls._expiry_index.set(key, idx)
 
     @classmethod
     def get(cls, key: str):
+        # Passive/Lazy expire
+        idx = cls._expiry_index.get(key, None)
+
+        if idx is not None:
+            _, expiry = cls._expiries[idx]
+            if expiry >= time.time():
+                cls.delete(key)
+                return None
+
         return cls._store.get(key, None)
 
+    @classmethod
+    def active_expire(cls, sample_size=100):
+        random_idx = random.randrange(0, len(cls._expiries))
+        now = time.time()
+        to_delete = []
+
+        for i in range(random_idx, min(random_idx + sample_size, len(cls._expiries))):
+
+            key, expiry = cls._expiries[i]
+            # Not expired
+            if  now >= expiry:
+                to_delete.append(key)
+        
+        for key in to_delete:
+            cls.delete(key)
+
+    @classmethod
+    def delete(cls, key: str):
+        cls._store.pop(key, None)
+
+        idx = cls._expiry_index.pop(key, None)
+        if idx is None:
+            return
+
+        last_key, _ = cls._expiries[-1]
+
+        if idx != len(cls._expiries) -1:
+            # Swap tuple at idx and end
+            cls._expiries[idx], cls._expiries[-1] = cls._expiries[-1], cls._expiries[idx]
+            # Update index of last key
+            cls._expiry_index[last_key] = idx
+
+        # Perform ttl tracking deletion
+        cls._expiries.pop()
+
+       
     
 
 """
@@ -131,8 +187,8 @@ Executes commands received from clients after parsing
 """
 def execute_cmd(args: List[str]):
     output = b""
+    args[0] = args[0].upper()
 
-    # Supporting only echo for now
     if args[0] == "ECHO":
         output = b"+" + args[1].encode("utf-8") + b"\r\n" if len(args) > 1 else b"-ERR Too few args for ECHO\r\n"
 
@@ -140,11 +196,30 @@ def execute_cmd(args: List[str]):
         output = b"+PONG\r\n"
 
     elif args[0] == "SET":
-        if len(args) < 3:
-            output = b"-ERR Too few args for ECHO\r\n"
-        else:
+        # Set without ttl
+        if len(args) == 3:
             DB.set(args[1], args[2])
             output = b"+OK\r\n"
+        
+        # Set with expiry
+        elif len(args) == 5:
+            ttl = None
+            args[3] = args[3].upper()
+
+            if args[3] == "EX":
+                ttl = args[3] * 1000
+            elif args[3] == "PX":
+                ttl = args[3]
+
+            if ttl is not None:
+                DB.set(args[1], args[2], ttl)
+                output = b"+OK\r\n"
+            else:
+                output = b"-ERR unknown arg\r\n"
+
+        # Unknown case
+        else:
+            output = b"-ERR Incorrect number of args\r\n"
 
     elif args[0] == "GET":
         val = DB.get(args[1])
