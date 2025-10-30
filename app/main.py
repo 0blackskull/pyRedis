@@ -29,7 +29,7 @@ class DB:
         if ttl: # ms
             idx = len(cls._expiries)
             cls._expiries.append((key, time.time() + ttl))
-            cls._expiry_index.set(key, idx)
+            cls._expiry_index[key] = idx
 
     @classmethod
     def get(cls, key: str):
@@ -38,7 +38,7 @@ class DB:
 
         if idx is not None:
             _, expiry = cls._expiries[idx]
-            if expiry >= time.time():
+            if expiry <= time.time():
                 cls.delete(key)
                 return None
 
@@ -200,16 +200,15 @@ def execute_cmd(args: List[str]):
         if len(args) == 3:
             DB.set(args[1], args[2])
             output = b"+OK\r\n"
-        
         # Set with expiry
         elif len(args) == 5:
             ttl = None
             args[3] = args[3].upper()
 
             if args[3] == "EX":
-                ttl = args[3] * 1000
+                ttl = int(args[4])
             elif args[3] == "PX":
-                ttl = args[3]
+                ttl = int(args[4]) / 1000
 
             if ttl is not None:
                 DB.set(args[1], args[2], ttl)
@@ -223,7 +222,11 @@ def execute_cmd(args: List[str]):
 
     elif args[0] == "GET":
         val = DB.get(args[1])
-        output = b"$-1\r\n" if val is None else b"+" + val.encode("utf-8") + b"\r\n"
+
+        if val is not None:
+            output = b"$" + str(len(val)).encode() + b"\r\n" + val.encode() + b"\r\n"
+        else:
+            output = b"$-1\r\n"
       
     else:
         output = b"-ERR unknown command\r\n"
@@ -296,13 +299,16 @@ def main():
     server_socket.setblocking(False)
     sel.register(server_socket, selectors.EVENT_READ, data=None)
 
+    last_active_cleanup = time.time()
+    max_wait = 0.1 # 100ms
+
     """
     Event Loop setup
     """
     while True:
-        # Wait for next message (blocking)
-        events = sel.select(timeout=None)
-
+        # Wait for next message 
+        events = sel.select(timeout=max_wait)
+        
         # Process message
         for key, mask in events:
             # Message from new connection
@@ -310,6 +316,12 @@ def main():
                 accept_connection(key.fileobj)
             else:
                 service_connection(key, mask)
+        
+        # Throttle active cleanup in case IO arrives earlier than 100 ms
+        now = time.time()
+        if now - last_active_cleanup > max_wait:
+            DB.active_expire()
+            last_active_cleanup = now
 
 
 if __name__ == "__main__":
