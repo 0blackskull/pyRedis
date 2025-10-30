@@ -289,7 +289,6 @@ def service_connection(key: selectors.SelectorKey, mask: int):
     
     if mask & selectors.EVENT_WRITE:
         if data.outb:
-            print("Responding with PONG")
             bytes_sent = conn.send(data.outb)
             data.outb = data.outb[bytes_sent:]
 
