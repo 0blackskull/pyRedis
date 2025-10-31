@@ -42,7 +42,7 @@ class DB:
         length = None
         # Create new list
         if val is None:
-            cls.set(key, Value([item], "list"))
+            cls.set(key, Value([item], ValueType.LIST))
             length = 1
         # Append to existing list
         else:
@@ -306,7 +306,7 @@ def execute_cmd(args: List[str]):
             if length is not None:
                 output = RESPEncoder.encode_int(length)
             else:
-                output = b"-ERR Key might not represent a list"
+                output = b"-ERR Key might not represent a list\r\n"
 
         else:
             output = b"-ERR RPUSH expects 3 args\r\n"
