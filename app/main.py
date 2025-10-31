@@ -328,10 +328,10 @@ def execute_cmd(args: List[str]):
             try:
                 start = int(args[2])
                 if start < 0:
-                    start %= n
+                    start = max(start + n, 0)
                 end = int(args[3])
                 if end < 0:
-                    end %= n
+                    end = max(end + n, 0)
             except ValueError:
                 output = RESPEncoder.encode_error("Value not an integer")
 
