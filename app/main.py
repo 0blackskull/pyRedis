@@ -117,6 +117,43 @@ class DB:
 
         # Perform ttl tracking deletion
         cls._expiries.pop()
+
+class RESPEncoder():
+    def __init__():
+        pass
+    # static method, no need to pass 'self'
+    @staticmethod
+    def encode_simple_str(s: str) -> bytes:
+        return f"+{s}\r\n".encode()
+    
+    @staticmethod
+    def encode_bulk_str(s: str | None) -> bytes:
+        if s is None:
+            return b"$-1\r\n"
+        return f"${len(s)}\r\n{s}\r\n".encode()
+    
+    @staticmethod
+    def encode_int(i: int) -> bytes:
+        return f":{i}\r\n".encode()
+    
+    @staticmethod
+    def encode_err(msg: str) -> bytes:
+        return f"-{msg}\r\n".encode()
+    
+    @staticmethod
+    def encode_arr(items: list[bytes]) -> bytes:
+        return b"*%d\r\n" % len(items) + b"".join(items)
+
+    @classmethod
+    def encode_value(cls, val: Value):
+        encoded = b"$-1\r\n"
+
+        if val.type == ValueType.LIST:
+            encoded = cls.encode_arr(val.val)
+        elif val.type == ValueType.STRING:
+            encoded = cls.encode_bulk_str(val.val)
+        
+        return encoded
  
 """
 Decode incoming RESP payload (array of bulk strings)
@@ -259,7 +296,7 @@ def execute_cmd(args: List[str]):
         val = DB.get(args[1])
 
         if val is not None:
-            output = b"$" + str(len(val)).encode() + b"\r\n" + val.encode() + b"\r\n"
+            output = RESPEncoder.encode_value(val)
         else:
             output = b"$-1\r\n"
 
@@ -267,7 +304,7 @@ def execute_cmd(args: List[str]):
         if len(args) == 3:
             length = DB.append_list(args[1], args[2])
             if length is not None:
-                output = b":" + str(length).encode() + b"\r\n"
+                output = RESPEncoder.encode_int(length)
             else:
                 output = b"-ERR Key might not represent a list"
 
