@@ -318,23 +318,27 @@ def execute_cmd(args: List[str]):
     elif args[0] == "LRANGE":
         if len(args) == 4:
             val = DB.get(args[1])
-            if val is not None:
-                arr = val.val
-                n = len(arr)
-                try:
-                    start = int(args[2])
-                    if start < 0:
-                        start %= n
-                    end = int(args[3])
-                    if end < 0:
-                        end %= n
-                except ValueError:
-                    output = RESPEncoder.encode_error("Value not an integer")
+            arr = []
 
-                if start >= n or start > end:
-                    output =  RESPEncoder.encode_arr([])
-                else:
-                    output = RESPEncoder.encode_arr(arr, start, min(end, len(arr) - 1))
+            if val is not None and val.type == ValueType.LIST:
+                arr = val.val
+
+            n = len(arr)
+
+            try:
+                start = int(args[2])
+                if start < 0:
+                    start %= n
+                end = int(args[3])
+                if end < 0:
+                    end %= n
+            except ValueError:
+                output = RESPEncoder.encode_error("Value not an integer")
+
+            if start >= n or start > end:
+                output =  RESPEncoder.encode_arr([])
+            else:
+                output = RESPEncoder.encode_arr(arr, start, min(end, len(arr) - 1))
 
         else:
             output = b"-ERR LRANGE expects 4 args\r\n"
