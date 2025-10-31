@@ -317,8 +317,9 @@ def execute_cmd(args: List[str]):
     
     elif args[0] == "LRANGE":
         if len(args) == 4:
-            arr = DB.get(args[1])
-            if arr is not None:
+            val = DB.get(args[1])
+            if val is not None:
+                arr = val.val
                 try:
                     start = int(args[2])
                     end = int(args[3])
