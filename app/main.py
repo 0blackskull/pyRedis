@@ -1,17 +1,30 @@
 import socket  # noqa: F401
 import selectors
 import types
-from typing import List
+from typing import List, Union
 import time
 import random
 
 sel = selectors.DefaultSelector()
 
+ # type : "str" "list" "set" "zset" "hash"
+class ValueType:
+    STRING = 0
+    LIST = 1
+    SET = 2
+    ZSET = 3
+    HASH = 4
+
+class Value:
+    def __init__(self, val: ValueType, type_: str):
+        self.val = val
+        self.type = type_
+
 """
 In memory key-value database
 """
 class DB:
-    _store = {}
+    _store: dict[str, Value] = {}
     # List of (key, now + ttl)
     _expiries = []
     # key -> index in _expiries
@@ -21,9 +34,32 @@ class DB:
         # Static class
         raise NotImplementedError("Attempted to instantiate static class")
 
+    # Primary usecase is RPUSH
+    # Returns new length on success, None on failure
+    @classmethod
+    def append_list(cls, key: str, item: str):
+        val = cls._store.get(key)
+        length = None
+        # Create new list
+        if val is None:
+            cls.set(key, Value([item], "list"))
+            length = 1
+        # Append to existing list
+        else:
+            # Appending allowed on lists only
+            if val.type != ValueType.LIST:
+                return None
+
+            val.val.append(item)
+            length = len(val.val)
+        
+        return length
+        
+
+
     # Class level methods (not instance/self level)
     @classmethod
-    def set(cls, key: str, val: str, ttl = None):
+    def set(cls, key: str, val: Value, ttl = None):
         cls._store[key] = val
 
         if ttl: # ms
@@ -81,10 +117,7 @@ class DB:
 
         # Perform ttl tracking deletion
         cls._expiries.pop()
-
-       
-    
-
+ 
 """
 Decode incoming RESP payload (array of bulk strings)
 returns array and remaining buffer
@@ -201,7 +234,7 @@ def execute_cmd(args: List[str]):
     elif args[0] == "SET":
         # Set without ttl
         if len(args) == 3:
-            DB.set(args[1], args[2])
+            DB.set(args[1], Value(args[2], ValueType.STRING))
             output = b"+OK\r\n"
         # Set with expiry
         elif len(args) == 5:
@@ -214,11 +247,10 @@ def execute_cmd(args: List[str]):
                 ttl = int(args[4]) / 1000
 
             if ttl is not None:
-                DB.set(args[1], args[2], ttl)
+                DB.set(args[1], Value(args[2], ValueType.STRING), ttl)
                 output = b"+OK\r\n"
             else:
                 output = b"-ERR unknown arg\r\n"
-
         # Unknown case
         else:
             output = b"-ERR Incorrect number of args\r\n"
@@ -230,6 +262,17 @@ def execute_cmd(args: List[str]):
             output = b"$" + str(len(val)).encode() + b"\r\n" + val.encode() + b"\r\n"
         else:
             output = b"$-1\r\n"
+
+    elif args[0] == "RPUSH":
+        if len(args) == 3:
+            length = DB.append_list(args[1], args[2])
+            if length is not None:
+                output = b":" + str(length).encode() + b"\r\n"
+            else:
+                output = b"-ERR Key might not represent a list"
+
+        else:
+            output = b"-ERR RPUSH expects 3 args\r\n"
       
     else:
         output = b"-ERR unknown command\r\n"
