@@ -37,20 +37,20 @@ class DB:
     # Primary usecase is RPUSH
     # Returns new length on success, None on failure
     @classmethod
-    def append_list(cls, key: str, item: str):
+    def append_list(cls, key: str, items: list[str]):
         val = cls._store.get(key)
         length = None
         # Create new list
         if val is None:
-            cls.set(key, Value([item], ValueType.LIST))
-            length = 1
+            cls.set(key, Value(items, ValueType.LIST))
+            length = len(items)
         # Append to existing list
         else:
             # Appending allowed on lists only
             if val.type != ValueType.LIST:
                 return None
 
-            val.val.append(item)
+            val.val.extend(items)
             length = len(val.val)
         
         return length
@@ -301,8 +301,8 @@ def execute_cmd(args: List[str]):
             output = b"$-1\r\n"
 
     elif args[0] == "RPUSH":
-        if len(args) == 3:
-            length = DB.append_list(args[1], args[2])
+        if len(args) >= 3:
+            length = DB.append_list(args[1], args[2:])
             if length is not None:
                 output = RESPEncoder.encode_int(length)
             else:
