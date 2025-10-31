@@ -263,7 +263,7 @@ class RESParser:
 Executes commands received from clients after parsing
 """
 def execute_cmd(args: List[str]):
-    output = b""
+    output = b"$-1\r\n"
     args[0] = args[0].upper()
 
     if args[0] == "ECHO":
@@ -317,7 +317,19 @@ def execute_cmd(args: List[str]):
     
     elif args[0] == "LRANGE":
         if len(args) == 4:
-            pass
+            arr = DB.get(args[1])
+            if arr is not None:
+                try:
+                    start = int(args[2])
+                    end = int(args[3])
+                except ValueError:
+                    output = RESPEncoder.encode_error("Value not an integer")
+
+                if end < len(arr) and start >= 0:
+                    output = RESPEncoder.encode_arr(arr, start, end)
+                else:
+                    output = b"-ERR out of range\r\n"
+
         else:
             output = b"-ERR LRANGE expects 4 args\r\n"
 
