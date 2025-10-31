@@ -140,10 +140,10 @@ class RESPEncoder():
     
     @staticmethod
     def encode_arr(items: list[str], st: int = 0, end: int = None) -> bytes:
-        l_end = len(items) - 1 if end is None else end
-        encoded = b"*" + str(l_end - st + 1).encode() + b"\r\n" 
+        rend = len(items) - 1 if end is None else end
+        encoded = b"*" + str(rend - st + 1).encode() + b"\r\n" 
 
-        for i in range(st, l_end):
+        for i in range(st, rend + 1):
             encoded += f"${len(items[i])}\r\n{items[i]}\r\n".encode()
 
         return encoded
@@ -320,16 +320,21 @@ def execute_cmd(args: List[str]):
             val = DB.get(args[1])
             if val is not None:
                 arr = val.val
+                n = len(arr)
                 try:
                     start = int(args[2])
+                    if start < 0:
+                        start %= n
                     end = int(args[3])
+                    if end < 0:
+                        end %= n
                 except ValueError:
                     output = RESPEncoder.encode_error("Value not an integer")
 
-                if end < len(arr) and start >= 0:
-                    output = RESPEncoder.encode_arr(arr, start, end)
+                if start >= n or start > end:
+                    output =  RESPEncoder.encode_arr([])
                 else:
-                    output = b"-ERR out of range\r\n"
+                    output = RESPEncoder.encode_arr(arr, start, min(end, len(arr) - 1))
 
         else:
             output = b"-ERR LRANGE expects 4 args\r\n"
