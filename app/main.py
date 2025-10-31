@@ -54,8 +54,6 @@ class DB:
             length = len(val.val)
         
         return length
-        
-
 
     # Class level methods (not instance/self level)
     @classmethod
@@ -141,8 +139,14 @@ class RESPEncoder():
         return f"-{msg}\r\n".encode()
     
     @staticmethod
-    def encode_arr(items: list[bytes]) -> bytes:
-        return b"*%d\r\n" % len(items) + b"".join(items)
+    def encode_arr(items: list[str], st: int = 0, end: int = None) -> bytes:
+        l_end = len(items) - 1 if end is None else end
+        encoded = b"*" + str(l_end - st + 1).encode() + b"\r\n" 
+
+        for i in range(st, l_end):
+            encoded += f"${len(items[i])}\r\n{items[i]}\r\n".encode()
+
+        return encoded
 
     @classmethod
     def encode_value(cls, val: Value):
@@ -309,8 +313,14 @@ def execute_cmd(args: List[str]):
                 output = b"-ERR Key might not represent a list\r\n"
 
         else:
-            output = b"-ERR RPUSH expects 3 args\r\n"
-      
+            output = b"-ERR RPUSH expects more than 2 args\r\n"
+    
+    elif args[0] == "LRANGE":
+        if len(args) == 4:
+            pass
+        else:
+            output = b"-ERR LRANGE expects 4 args\r\n"
+
     else:
         output = b"-ERR unknown command\r\n"
     
