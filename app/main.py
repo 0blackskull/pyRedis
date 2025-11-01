@@ -7,6 +7,94 @@ import random
 
 sel = selectors.DefaultSelector()
 
+class QuickListNode:
+    def __init__(self):
+        self.values = []
+        self.prev = None
+        self.next = None
+
+class QuickList:
+    def __init__(self, max_node_size = 5):
+        self.max_node_size = max_node_size
+        self.head: QuickListNode = None
+        self.tail: QuickListNode = None
+        self.length = 0
+
+    def _append_new_node(self):
+        node = QuickListNode()
+
+        # First node case
+        if self.head is None:
+            self.head = self.tail = node
+        
+        # Add to end
+        else:
+            # Double link
+            self.tail.next = node
+            node.prev = self.tail
+
+            # Move tail
+            self.tail = node
+
+        return node
+
+    def _prepend_new_node(self):
+        node = QuickListNode()
+
+        # First node case
+        if self.head is None:
+            self.head = self.tail = node
+        
+        # Add to end
+        else:
+            # Double link
+            self.head.prev = node
+            node.next = self.head
+
+            # Move tail
+            self.head = node
+
+        return node
+
+    def lrange(self, st: int, end: int):
+        if st < 0 or end >= self.length:
+            return None
+
+        idx = 0
+        cur = self.head
+        res = []
+
+        while cur and idx <= end:
+            for v in cur.values:
+                if st <= idx <= end:
+                    res.append(v)
+                
+                idx += 1
+                if idx > end:
+                    break
+            
+            cur = cur.next
+        
+        return res
+
+    def append(self, val: str):
+        if self.tail is None or len(self.tail.values) >= self.max_node_size:
+            self._append_new_node()
+
+        self.tail.values.append(val)
+        self.length += 1
+
+        return self.length
+
+    def prepend(self, val: str):
+        if self.head is None or len(self.head.values) >= self.max_node_size:
+            self._prepend_new_node()
+
+        self.head.values.append(val)
+        self.length += 1
+        
+        return self.length
+
  # type : "str" "list" "set" "zset" "hash"
 class ValueType:
     STRING = 0
@@ -16,7 +104,7 @@ class ValueType:
     HASH = 4
 
 class Value:
-    def __init__(self, val: ValueType, type_: str):
+    def __init__(self, val: str | QuickList, type_: ValueType):
         self.val = val
         self.type = type_
 
@@ -37,7 +125,7 @@ class DB:
     # Primary usecase is RPUSH
     # Returns new length on success, None on failure
     @classmethod
-    def append_list(cls, key: str, items: list[str]):
+    def add_to_list(cls, key: str, items: list[str], prepend = False):
         val = cls._store.get(key)
         length = None
         # Create new list
@@ -50,8 +138,14 @@ class DB:
             if val.type != ValueType.LIST:
                 return None
 
-            val.val.extend(items)
-            length = len(val.val)
+            if prepend:
+                for item in items:
+                    val.val.prepend(item)
+            else:
+                for item in items:
+                    val.val.append(item)
+
+            length = val.val.length
         
         return length
 
@@ -139,14 +233,10 @@ class RESPEncoder():
         return f"-{msg}\r\n".encode()
     
     @staticmethod
-    def encode_arr(items: list[str], st: int = 0, end: int = None) -> bytes:
-        rend = len(items) - 1 if end is None else end
-        encoded = b"*" + str(rend - st + 1).encode() + b"\r\n" 
-
-        for i in range(st, rend + 1):
-            encoded += f"${len(items[i])}\r\n{items[i]}\r\n".encode()
-
-        return encoded
+    def encode_arr(items: list[str]) -> bytes:
+        return b"*" + str(len(items)).encode() + b"\r\n" + (
+            b"".join(f"${len(item)}\r\n{item}\r\n".encode() for item in items)
+        )
 
     @classmethod
     def encode_value(cls, val: Value):
@@ -306,7 +396,7 @@ def execute_cmd(args: List[str]):
 
     elif args[0] == "RPUSH":
         if len(args) >= 3:
-            length = DB.append_list(args[1], args[2:])
+            length = DB.add_to_list(args[1], args[2:])
             if length is not None:
                 output = RESPEncoder.encode_int(length)
             else:
@@ -318,7 +408,7 @@ def execute_cmd(args: List[str]):
     elif args[0] == "LRANGE":
         if len(args) == 4:
             val = DB.get(args[1])
-            arr = []
+            arr = QuickList()
 
             if val is not None and val.type == ValueType.LIST:
                 arr = val.val
@@ -326,22 +416,36 @@ def execute_cmd(args: List[str]):
             n = len(arr)
 
             try:
-                start = int(args[2])
-                if start < 0:
-                    start = max(start + n, 0)
+                st = int(args[2])
+                if st < 0:
+                    st = max(st + n, 0)
                 end = int(args[3])
                 if end < 0:
                     end = max(end + n, 0)
+                    
             except ValueError:
                 output = RESPEncoder.encode_error("Value not an integer")
 
-            if start >= n or start > end:
+            if st >= n or st > end:
                 output =  RESPEncoder.encode_arr([])
             else:
-                output = RESPEncoder.encode_arr(arr, start, min(end, len(arr) - 1))
+                if end >= arr.length:
+                    end = arr.length - 1
+                output = RESPEncoder.encode_arr(arr.lrange(st, end))
 
         else:
             output = b"-ERR LRANGE expects 4 args\r\n"
+
+    elif args[0] == "LPUSH":
+
+        if len(args) >= 3:
+            length = DB.add_to_list(args[1], args[2:], prepend=True)
+            if length is not None:
+                output = RESPEncoder.encode_int(length)
+            else:
+                output = b"-ERR Key might not represent a list\r\n"
+        else:
+            output = b"-ERR LPUSH expects more than 2 args\r\n"
 
     else:
         output = b"-ERR unknown command\r\n"
@@ -438,5 +542,16 @@ def main():
             last_active_cleanup = now
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
+
+# l = QuickList(2)
+
+# l.append('a')
+# l.append('b')
+# l.append('c')
+# l.prepend('d')
+# l.append('e')
+# l.append('f')
+
+# print(l.lrange(0, 5))
