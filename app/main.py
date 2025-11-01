@@ -77,6 +77,35 @@ class QuickList:
         
         return res
 
+    def pop(self):
+        items = []
+        return items
+    
+    def popleft(self, count=1):
+        if self.head is None or len(self.head.values) == 0:
+            return []
+
+        items = []
+        node = self.head
+
+        while node and count > 0:
+            n = min(len(node.values), count)
+
+            items.extend(node.values[0:n])
+            node.values = node.values[n:len(node.values)]
+
+            count -= n
+            
+            if len(node.values) == 0:
+                nxt = node.next
+                node.next = None
+                if nxt:
+                    nxt.prev = None
+                self.head = nxt
+                node = nxt
+
+        return items
+
     def append(self, val: str):
         if self.tail is None or len(self.tail.values) >= self.max_node_size:
             self._append_new_node()
@@ -104,9 +133,9 @@ class ValueType:
     HASH = 4
 
 class Value:
-    def __init__(self, val: str | QuickList, type_: ValueType):
+    def __init__(self, val: Union[str, QuickList], type_: ValueType):
         self.val = val
-        self.type = type_
+        self.type_ = type_
 
 """
 In memory key-value database
@@ -127,27 +156,23 @@ class DB:
     @classmethod
     def add_to_list(cls, key: str, items: list[str], prepend = False):
         val = cls._store.get(key)
-        length = None
         # Create new list
         if val is None:
-            cls.set(key, Value(items, ValueType.LIST))
-            length = len(items)
-        # Append to existing list
+            val = Value(QuickList(), ValueType.LIST)
+            cls.set(key, val)
+    
+        # Appending allowed on lists only
+        if val.type_ != ValueType.LIST:
+            return None
+
+        if prepend:
+            for item in items:
+                val.val.prepend(item)
         else:
-            # Appending allowed on lists only
-            if val.type != ValueType.LIST:
-                return None
+            for item in items:
+                val.val.append(item)
 
-            if prepend:
-                for item in items:
-                    val.val.prepend(item)
-            else:
-                for item in items:
-                    val.val.append(item)
-
-            length = val.val.length
-        
-        return length
+        return val.val.length
 
     # Class level methods (not instance/self level)
     @classmethod
@@ -219,7 +244,7 @@ class RESPEncoder():
         return f"+{s}\r\n".encode()
     
     @staticmethod
-    def encode_bulk_str(s: str | None) -> bytes:
+    def encode_bulk_str(s: Union[str, None]) -> bytes:
         if s is None:
             return b"$-1\r\n"
         return f"${len(s)}\r\n{s}\r\n".encode()
@@ -242,9 +267,9 @@ class RESPEncoder():
     def encode_value(cls, val: Value):
         encoded = b"$-1\r\n"
 
-        if val.type == ValueType.LIST:
+        if val.type_ == ValueType.LIST:
             encoded = cls.encode_arr(val.val)
-        elif val.type == ValueType.STRING:
+        elif val.type_ == ValueType.STRING:
             encoded = cls.encode_bulk_str(val.val)
         
         return encoded
@@ -410,31 +435,49 @@ def execute_cmd(args: List[str]):
             val = DB.get(args[1])
             arr = QuickList()
 
-            if val is not None and val.type == ValueType.LIST:
-                arr = val.val
+            if val is not None:
+                if val.type_ == ValueType.LIST:
+                    arr = val.val
+                else:
+                    return b"-ERR WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
 
-            n = len(arr)
+            n = arr.length
+            st = None
+            end = None
 
             try:
                 st = int(args[2])
+                end = int(args[3])
+
                 if st < 0:
                     st = max(st + n, 0)
-                end = int(args[3])
                 if end < 0:
-                    end = max(end + n, 0)
-                    
-            except ValueError:
-                output = RESPEncoder.encode_error("Value not an integer")
+                    end += n
 
-            if st >= n or st > end:
-                output =  RESPEncoder.encode_arr([])
-            else:
-                if end >= arr.length:
-                    end = arr.length - 1
-                output = RESPEncoder.encode_arr(arr.lrange(st, end))
+                end = min(end, n - 1)
+
+                if 0 <= end < n and end >= st:
+                    output = RESPEncoder.encode_arr(arr.lrange(st, end))
+                else:
+                    output = RESPEncoder.encode_arr([])
+
+            except ValueError:
+                output = b"-ERR range values not an integer\r\n"
 
         else:
             output = b"-ERR LRANGE expects 4 args\r\n"
+
+    elif args[0] == "LLEN":
+        if len(args) == 2:
+            val = DB.get(args[1])
+            if val is None:
+                output = b":0\r\n"
+            elif val.type_ == ValueType.LIST:
+                output = RESPEncoder.encode_int(val.val.length)
+            else:
+                output = b"-ERR WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+        else:
+            output = b"-ERR LLEN only 1 arg\r\n"
 
     elif args[0] == "LPUSH":
 
@@ -447,10 +490,50 @@ def execute_cmd(args: List[str]):
         else:
             output = b"-ERR LPUSH expects more than 2 args\r\n"
 
+    elif args[0] == "LPOP":
+        if 2 <= len(args) <= 3:
+            val = DB.get(args[1])
+            if val is None:
+                output = b"$-1\r\n"
+            elif val.type_ != ValueType.LIST:
+                output = b"-ERR WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+            else:
+                
+                count = 1
+                if len(args) == 3:
+                    try:
+                        count = min(int(args[2]), val.val.length)
+                        if count < 0:
+                            raise ValueError
+                    except ValueError:
+                        output = b"-ERR value out of range, must be positive\r\n"
+                        return output
+
+                arr = val.val.popleft(count)
+                if not arr:
+                    output = b"$-1\r\n"
+                elif len(args) == 2:
+                    output = RESPEncoder.encode_bulk_str(arr[0])
+                else:
+                    output = RESPEncoder.encode_arr(arr)
+
+        else:
+            output = b"-ERR LPOP expects 2 args\r\n"
+
+    elif args[0] == "RPOP":
+        pass
+
+    elif args[0] == "DEL":
+        if len(args) == 2:
+            DB.delete(args[1])
+            output = b"+OK\r\n"
+        else:
+            output = b"-ERR DEL expects 1 arg\r\n"
+
     else:
         output = b"-ERR unknown command\r\n"
     
-    # null type = $-1\r\n
+    print(args, output)
 
     return output
             
@@ -542,8 +625,8 @@ def main():
             last_active_cleanup = now
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 
 # l = QuickList(2)
 
