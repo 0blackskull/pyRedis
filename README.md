@@ -14,7 +14,7 @@ A minimal, test-driven clone of the Redis key-value store, focused on core data 
 **To start the server:**
 
 ```sh
-python app/main.py
+python3 -m app.main
 ```
 
 The server listens on `localhost:6379` by default.
