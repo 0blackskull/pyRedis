@@ -1,60 +1,98 @@
-[![progress-banner](https://backend.codecrafters.io/progress/redis/143c75b6-b03e-4614-a3cf-3372fc01eaca)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# pyRedis: A Toy Redis Implementation in Pure Python
 
-This is a starting point for Python solutions to the
-["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
+## Project Overview
 
-In this challenge, you'll build a toy Redis clone that's capable of handling
-basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
-event loops, the Redis protocol and more.
+A minimal, test-driven clone of the Redis key-value store, focused on core data structures and command processing. Designed to demonstrate systems-level Python, network fundamentals, parsing, and event-driven server design.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## How to Run This Project
 
-# Passing the first stage
+**Requirements:**
 
-The entry point for your Redis implementation is in `app/main.py`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+- Python 3.8 or higher
+- `pytest` for tests
+
+**To start the server:**
 
 ```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+python app/main.py
 ```
 
-That's all!
+The server listens on `localhost:6379` by default.
 
-# Stage 2 & beyond
+**To run the tests:**
 
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `python (3.13)` installed locally
-1. Run `./your_program.sh` to run your Redis server, which is implemented in
-   `app/main.py`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
-
-# Troubleshooting
-
-## module `socket` has no attribute `create_server`
-
-When running your server locally, you might see an error like this:
-
-```
-Traceback (most recent call last):
-  File "/.../python3.7/runpy.py", line 193, in _run_module_as_main
-    "__main__", mod_spec)
-  File "/.../python3.7/runpy.py", line 85, in _run_code
-    exec(code, run_globals)
-  File "/app/app/main.py", line 11, in <module>
-    main()
-  File "/app/app/main.py", line 6, in main
-    s = socket.create_server(("localhost", 6379), reuse_port=True)
-AttributeError: module 'socket' has no attribute 'create_server'
+```sh
+pytest tests/test_server.py
 ```
 
-This is because `socket.create_server` was introduced in Python 3.8, and you
-might be running an older version.
+---
 
-You can fix this by installing Python 3.8 locally and using that.
+## Project Structure
 
-If you'd like to use a different version of Python, change the `buildpack` value
-in `codecrafters.yml`.
+- `app/main.py`: All main server logic, protocol handling, and data storage.
+- `tests/test_server.py`: Automated tests executing commands against a live server process via sockets.
+- `Pipfile`/`Pipfile.lock`: Project dependencies (minimal).
+
+---
+
+## Architectural Overview
+
+This project is single-process, event-driven, and fully self-contained. The core elements are:
+
+### Evented TCP Server
+
+- Uses Python’s `selectors` module for efficient IO multiplexing, managing multiple client connections in a single process and thread.
+
+### RESP Protocol Parsing
+
+- Implements the Redis Serialization Protocol (RESP), handling fragmented/batched requests as would typically occur over real-world TCP streams.
+
+### Data Storage Layer
+
+- Centralized in-memory storage (`DB` class) tracks all keys, values, and expiry information using static class structures.
+- Supports string and list types, using a QuickList (linked node arrays) structure for list operations. Expiry is managed via both “active” sweeps and “lazy” checks on read.
+
+### Command Pipeline
+
+- Commands are parsed, normalized, type-checked, and dispatched according to the RESP-defined protocol. The server enforces argument and type rules and returns protocol-compliant responses and errors.
+
+### Testing
+
+- All correctness is driven by socket-level black box tests which interact directly with the running server process using genuine RESP messages.
+
+## Current Functionality and Boundaries
+
+This server supports basic Redis-like commands for strings and lists (`SET`, `GET`, `RPUSH`, `LPUSH`, `LLEN`, `LRANGE`, `LPOP`, `DEL`, etc.) with proper type and argument validation. Data is fully in-memory, and the implementation does not include persistence, snapshotting, clustering, or authentication. The architecture is single-threaded, using event-based IO concurrency to ensure responsiveness and simplicity. The overall approach closely mirrors core Redis event loop and protocol strategies within a single-file Python context.
+
+## Key Design Decisions
+
+**Concurrency with Selectors over Threads**
+
+This server uses cooperative IO multiplexing (via `selectors`) instead of threads. This decision removes complexity with locks and race conditions, allows for deterministic state management, and provides predictable performance even as connection count increases. It reflects how production systems like Redis favor non-blocking, event-driven interfaces for efficiency and maintainability.
+
+**Selectors Module**
+
+Python’s `selectors` wraps system-level event notification (`select`, `epoll`, or `kqueue`), letting a single thread efficiently manage sockets at scale. This abstraction provides performance and code clarity, especially for an educational or prototyping context.
+
+**QuickList for List Storage**
+
+Lists are implemented using a QuickList data structure—a doubly-linked list where each node holds a small array of values. This strikes a pragmatic compromise between optimal head/tail insertion and memory management, and is inspired by Redis’s internal storage approach. Unlike a flat array, QuickList is efficient for dynamic workloads with frequent prepends and appends.
+
+**Engineering Notes**
+
+- The RESP parser robustly handles line breaks and message boundaries across arbitrary TCP splits, a common source of bugs in naive socket programs.
+- TTL expiry logic includes both poll-based (“active”) and access-based (“lazy”) removal, enabling efficient cleanup regardless of system usage patterns.
+- The DB logic is static and single-process only, by design, to maintain clarity and focus on core concepts.
+
+## Future Scope
+
+- **Transactions and Pub/Sub:** These features can be integrated by extending the command execution logic and internal state management. The server's command routing and event loop are structured to enable further extension.
+- **Persistence:** Adding snapshotting or append-only logging would bring data durability between runs.
+- **New Types:** Adding support for sets, sorted sets, and hashes would be a direct extension to the current type system.
+- **Clustering/Replication:** These advanced capabilities could be built by extending communication protocols and the current modular architecture.
+
+---
+
+## About the Author
+
+_This project was developed as a portfolio experiment and proof of technical depth in backend/server systems. Reach out via LinkedIn or email if you’d like to discuss it or see further work._
