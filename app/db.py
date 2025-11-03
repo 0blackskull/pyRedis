@@ -11,20 +11,17 @@ class Value:
         self.type_ = type_
 
 class DB:
-    _store = {}
-    _expiries = []
-    _expiry_index = {}
-
     def __init__(self):
-        raise NotImplementedError("Attempted to instantiate static class")
+        self._store = {}
+        self._expiries = []
+        self._expiry_index = {}
 
-    @classmethod
-    def add_to_list(cls, key, items, prepend=False):
-        val = cls._store.get(key)
+    def add_to_list(self, key, items, prepend=False):
+        val = self._store.get(key)
         if val is None:
             from .utils import QuickList
             val = Value(QuickList(), ValueType.LIST)
-            cls.set(key, val)
+            self.set(key, val)
         if val.type_ != ValueType.LIST:
             return None
         if prepend:
@@ -35,50 +32,46 @@ class DB:
                 val.val.append(item)
         return val.val.length
 
-    @classmethod
-    def set(cls, key, val, ttl=None):
-        cls._store[key] = val
+    def set(self, key, val, ttl=None):
+        self._store[key] = val
         if ttl:
-            idx = len(cls._expiries)
+            idx = len(self._expiries)
             import time
-            cls._expiries.append((key, time.time() + ttl))
-            cls._expiry_index[key] = idx
+            self._expiries.append((key, time.time() + ttl))
+            self._expiry_index[key] = idx
 
-    @classmethod
-    def get(cls, key):
-        idx = cls._expiry_index.get(key, None)
+    def get(self, key):
+        idx = self._expiry_index.get(key, None)
         import time
         if idx is not None:
-            _, expiry = cls._expiries[idx]
+            _, expiry = self._expiries[idx]
             if expiry <= time.time():
-                cls.delete(key)
+                self.delete(key)
                 return None
-        return cls._store.get(key, None)
+        return self._store.get(key, None)
 
-    @classmethod
-    def active_expire(cls, sample_size=100):
-        if not cls._expiries:
+    def active_expire(self, sample_size=100):
+        if not self._expiries:
             return
         import random
         import time
-        random_idx = random.randrange(0, len(cls._expiries))
+        random_idx = random.randrange(0, len(self._expiries))
         now = time.time()
         to_delete = []
-        for i in range(random_idx, min(random_idx + sample_size, len(cls._expiries))):
-            key, expiry = cls._expiries[i]
+        for i in range(random_idx, min(random_idx + sample_size, len(self._expiries))):
+            key, expiry = self._expiries[i]
             if  now >= expiry:
                 to_delete.append(key)
         for key in to_delete:
-            cls.delete(key)
+            self.delete(key)
 
-    @classmethod
-    def delete(cls, key):
-        cls._store.pop(key, None)
-        idx = cls._expiry_index.pop(key, None)
+    def delete(self, key):
+        self._store.pop(key, None)
+        idx = self._expiry_index.pop(key, None)
         if idx is None:
             return
-        last_key, _ = cls._expiries[-1]
-        if idx != len(cls._expiries) -1:
-            cls._expiries[idx], cls._expiries[-1] = cls._expiries[-1], cls._expiries[idx]
-            cls._expiry_index[last_key] = idx
-        cls._expiries.pop()
+        last_key, _ = self._expiries[-1]
+        if idx != len(self._expiries) -1:
+            self._expiries[idx], self._expiries[-1] = self._expiries[-1], self._expiries[idx]
+            self._expiry_index[last_key] = idx
+        self._expiries.pop()

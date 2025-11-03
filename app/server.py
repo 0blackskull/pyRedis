@@ -5,7 +5,7 @@ from .db import DB, Value, ValueType
 from .utils import QuickList
 from .parser import RESPEncoder
 
-def execute_cmd(args):
+def execute_cmd(args, db: DB):
     output = b"$-1\r\n"
     args[0] = args[0].upper()
     if args[0] == "ECHO":
@@ -14,7 +14,7 @@ def execute_cmd(args):
         output = b"+PONG\r\n"
     elif args[0] == "SET":
         if len(args) == 3:
-            DB.set(args[1], Value(args[2], ValueType.STRING))
+            db.set(args[1], Value(args[2], ValueType.STRING))
             output = b"+OK\r\n"
         elif len(args) == 5:
             ttl = None
@@ -24,21 +24,21 @@ def execute_cmd(args):
             elif args[3] == "PX":
                 ttl = int(args[4]) / 1000
             if ttl is not None:
-                DB.set(args[1], Value(args[2], ValueType.STRING), ttl)
+                db.set(args[1], Value(args[2], ValueType.STRING), ttl)
                 output = b"+OK\r\n"
             else:
                 output = b"-ERR unknown arg\r\n"
         else:
             output = b"-ERR Incorrect number of args\r\n"
     elif args[0] == "GET":
-        val = DB.get(args[1])
+        val = db.get(args[1])
         if val is not None:
             output = RESPEncoder.encode_value(val)
         else:
             output = b"$-1\r\n"
     elif args[0] == "RPUSH":
         if len(args) >= 3:
-            length = DB.add_to_list(args[1], args[2:])
+            length = db.add_to_list(args[1], args[2:])
             if length is not None:
                 output = RESPEncoder.encode_int(length)
             else:
@@ -47,7 +47,7 @@ def execute_cmd(args):
             output = b"-ERR RPUSH expects more than 2 args\r\n"
     elif args[0] == "LRANGE":
         if len(args) == 4:
-            val = DB.get(args[1])
+            val = db.get(args[1])
             arr = QuickList()
             if val is not None:
                 if val.type_ == ValueType.LIST:
@@ -75,7 +75,7 @@ def execute_cmd(args):
             output = b"-ERR LRANGE expects 4 args\r\n"
     elif args[0] == "LLEN":
         if len(args) == 2:
-            val = DB.get(args[1])
+            val = db.get(args[1])
             if val is None:
                 output = b":0\r\n"
             elif val.type_ == ValueType.LIST:
@@ -86,7 +86,7 @@ def execute_cmd(args):
             output = b"-ERR LLEN only 1 arg\r\n"
     elif args[0] == "LPUSH":
         if len(args) >= 3:
-            length = DB.add_to_list(args[1], args[2:], prepend=True)
+            length = db.add_to_list(args[1], args[2:], prepend=True)
             if length is not None:
                 output = RESPEncoder.encode_int(length)
             else:
@@ -95,7 +95,7 @@ def execute_cmd(args):
             output = b"-ERR LPUSH expects more than 2 args\r\n"
     elif args[0] == "LPOP":
         if 2 <= len(args) <= 3:
-            val = DB.get(args[1])
+            val = db.get(args[1])
             if val is None:
                 output = b"$-1\r\n"
             elif val.type_ != ValueType.LIST:
@@ -123,7 +123,7 @@ def execute_cmd(args):
         pass
     elif args[0] == "DEL":
         if len(args) == 2:
-            DB.delete(args[1])
+            db.delete(args[1])
             output = b"+OK\r\n"
         else:
             output = b"-ERR DEL expects 1 arg\r\n"
@@ -147,7 +147,7 @@ def accept_connection(sock):
     except ValueError:
         print("Invalid mask or fd in during register")
 
-def service_connection(key, mask):
+def service_connection(key, mask, db: DB):
     conn = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
@@ -155,7 +155,7 @@ def service_connection(key, mask):
         if recv_data:
             args = data.parser.parse(recv_data)
             if args:
-                data.outb += execute_cmd(args)
+                data.outb += execute_cmd(args, db)
         else:
             print(f"Closing connection from {data.addr}")
             sel.unregister(conn)
@@ -168,6 +168,7 @@ def service_connection(key, mask):
 def event_loop():
     import socket
     import time
+    db = DB()
     server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
     server_socket.setblocking(False)
     sel.register(server_socket, selectors.EVENT_READ, data=None)
@@ -179,8 +180,8 @@ def event_loop():
             if not key.data:
                 accept_connection(key.fileobj)
             else:
-                service_connection(key, mask)
+                service_connection(key, mask, db)
         now = time.time()
         if now - last_active_cleanup > max_wait:
-            DB.active_expire()
+            db.active_expire()
             last_active_cleanup = now

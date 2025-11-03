@@ -1,8 +1,8 @@
-# pyRedis: A Toy Redis Implementation in Pure Python
+# pyRedis: An Educational Redis Implementation in Pure Python
 
 ## Project Overview
 
-A minimal, test-driven clone of the Redis key-value store, focused on core data structures and command processing. Designed to demonstrate systems-level Python, network fundamentals, parsing, and event-driven server design.
+A minimal, test-driven clone of the Redis key-value store, focused on core data structures and command processing. Designed as an educational showcase for hiring managers, demonstrating systems-level Python, network fundamentals, parsing, and event-driven server design.
 
 ## How to Run This Project
 
@@ -29,9 +29,9 @@ pytest tests/test_server.py
 
 ## Project Structure
 
-- `app/main.py`: All main server logic, protocol handling, and data storage.
+- `app/main.py`: Main server entry point and event loop.
 - `tests/test_server.py`: Automated tests executing commands against a live server process via sockets.
-- `Pipfile`/`Pipfile.lock`: Project dependencies (minimal).
+- `Pipfile`/`Pipfile.lock`: Project dependencie.
 
 ---
 
@@ -49,7 +49,7 @@ This project is single-process, event-driven, and fully self-contained. The core
 
 ### Data Storage Layer
 
-- Centralized in-memory storage (`DB` class) tracks all keys, values, and expiry information using static class structures.
+- Centralized in-memory storage (`DB` class) tracks all keys, values, and expiry information using a single DB instance passed throughout the server code.
 - Supports string and list types, using a QuickList (linked node arrays) structure for list operations. Expiry is managed via both “active” sweeps and “lazy” checks on read.
 
 ### Command Pipeline
@@ -82,7 +82,7 @@ Lists are implemented using a QuickList data structure—a doubly-linked list wh
 
 - The RESP parser robustly handles line breaks and message boundaries across arbitrary TCP splits, a common source of bugs in naive socket programs.
 - TTL expiry logic includes both poll-based (“active”) and access-based (“lazy”) removal, enabling efficient cleanup regardless of system usage patterns.
-- The DB logic is static and single-process only, by design, to maintain clarity and focus on core concepts.
+- The DB logic is instance-based and single-process only to focus on core concepts and simplicity for an educational context.
 
 ## Future Scope
 
