@@ -94,5 +94,5 @@ Lists are implemented using a QuickList data structure—a doubly-linked list wh
 ---
 
 ## About the Author
-
+https://www.linkedin.com/in/utkarsh-bajpai-a673061aa/
 _This project was developed as a portfolio experiment and proof of technical depth in backend/server systems. Reach out via LinkedIn or email if you’d like to discuss it or see further work._
